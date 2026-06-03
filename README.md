@@ -1,110 +1,210 @@
-# ComfyUI-VideoHelperSuite
-Nodes related to video workflows
+# ComfyUI-VideoHelperSuite (Batch Edition)
 
-## I/O Nodes
-### Load Video
-Converts a video file into a series of images
-- video: The video file to be loaded
-- force_rate: Discards or duplicates frames as needed to hit a target frame rate. Disabled by setting to 0. This can be used to quickly match a suggested frame rate like the 8 fps of AnimateDiff.
-- force_size: Allows for quick resizing to a number of suggested sizes. Several options allow you to set only width or height and determine the other from aspect ratio.
-- frame_load_cap: The maximum number of frames which will be returned. This could also be thought of as the maximum batch size.
-- skip_first_frames: How many frames to skip from the start of the video after adjusting for a forced frame rate. By incrementing this number by the frame_load_cap, you can easily process a longer input video in parts. 
-- select_every_nth: Allows for skipping a number of frames without considering the base frame rate or risking frame duplication. Often useful when working with animated gifs
-A path variant of the Load Video node exists that allows loading videos from external paths
-![step](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite/assets/4284322/b5fc993c-5c9b-4608-afa4-48ae2e1380ef)
-![resize](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite/assets/4284322/98d2e78e-1c44-443c-a8fe-0dab0b5947f3)
-If [Advanced Previews](#advanced-previews) is enabled in the options menu of the web ui, the preview will reflect the current settings on the node.
-### Load Image Sequence
-Loads all image files from a subfolder. Options are similar to Load Video.
-- image_load_cap: The maximum number of images which will be returned. This could also be thought of as the maximum batch size.
-- skip_first_images: How many images to skip. By incrementing this number by image_load_cap, you can easily divide a long sequence of images into multiple batches.
-- select_every_nth: Allows for skipping a number of images between every returned frame.
+> **Fork of [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite)**  
+> 在原版基础上新增了**批量视频目录处理**和**保留原始文件名保存**两个节点，专为批量视频工作流设计。
 
-A path variant of Load Image sequence also exists.
+---
+
+## 新增节点
+
+### Load Videos From Directory (Path) 🎥🅥🅗🅢
+
+**节点 ID：** `VHS_LoadVideosFromDirectoryPath`  
+**分类：** `Video Helper Suite 🎥🅥🅗🅢`
+
+遍历指定目录下的所有视频文件，每次 workflow 执行处理一个视频，处理完后自动 requeue 下一个，直到全部完成。
+
+**显存优势：** 每次只有一个视频的帧在内存中，峰值显存恒定，不随视频数量叠加，适合大批量、长视频处理。
+
+#### 输入参数
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `directory` | STRING | 视频目录路径（绝对路径）|
+| `skip_first_videos` | INT | 跳过前 N 个视频 |
+| `video_load_cap` | INT | 最多处理几个视频，`0` 表示全部 |
+| `select_every_nth_video` | INT | 每 N 个视频取 1 个 |
+| `force_rate` | FLOAT/INT | 强制帧率，`0` 禁用 |
+| `custom_width` / `custom_height` | INT | 自定义分辨率，`0` 保持原始 |
+| `frame_load_cap` | INT | 每个视频最多加载的帧数 |
+| `skip_first_frames` | INT | 每个视频跳过前 N 帧 |
+| `select_every_nth` | INT | 每 N 帧取 1 帧 |
+| `meta_batch` | VHS_BatchManager | 可选，批次管理器 |
+| `vae` | VAE | 可选，直接输出 Latent |
+| `format` | COMBO | 加载格式预设（AnimateDiff / LTXV / Wan 等）|
+
+#### 输出
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `IMAGE` | IMAGE / LATENT | 当前视频帧序列 |
+| `frame_count` | INT | 当前视频帧数 |
+| `audio` | AUDIO | 当前视频音频 |
+| `video_info` | VHS_VIDEOINFO | 当前视频元信息 |
+| `current_index` | INT | 当前是第几个视频（0-based）|
+| `total_count` | INT | 目录下共几个视频 |
+| `current_filename` | STRING | 当前视频文件名（含扩展名，用于命名输出）|
+
+#### 工作原理
+
+```
+第 1 次执行：扫描目录 → 加载 video[0] → 处理 → 输出 → 自动 requeue
+第 2 次执行：加载 video[1] → 处理 → 输出 → 自动 requeue
+...
+第 N 次执行：加载 video[N-1] → 处理 → 输出 → 完成，停止
+```
+
+---
+
+### Save Video (Keep Filename) 🎥🅥🅗🅢
+
+**节点 ID：** `VHS_SaveVideoWithFilename`  
+**分类：** `Video Helper Suite 🎥🅥🅗🅢`
+
+以指定文件名保存视频，不附加计数器后缀。配合 `LoadVideosFromDirectory` 的 `current_filename` 输出，可实现"输入叫什么、输出就叫什么"。
+
+#### 输入参数
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `images` | IMAGE / LATENT | 视频帧 |
+| `frame_rate` | FLOAT/INT | 输出帧率 |
+| `loop_count` | INT | 循环次数，`0` 不循环 |
+| `filename_stem` | STRING | **输出文件名（不含扩展名）**，直接连 `current_filename` |
+| `subfolder` | STRING | 输出子目录（相对 ComfyUI output 目录），留空放根目录 |
+| `format` | COMBO | 输出格式，同 VideoCombine（gif / webp / mp4 / webm 等）|
+| `pingpong` | BOOLEAN | 乒乓循环 |
+| `save_output` | BOOLEAN | `true`=output 目录 / `false`=temp 目录 |
+| `overwrite` | BOOLEAN | 是否覆盖同名文件，关闭时自动追加 `_001/_002…` |
+| `audio` | AUDIO | 可选，混流音频 |
+| `vae` | VAE | 可选，VAE decode |
+
+#### 输出
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `Filenames` | VHS_FILENAMES | 所有生成文件路径列表 |
+
+---
+
+### 典型批量处理 Workflow
+
+```
+VHS_LoadVideosFromDirectoryPath
+├── IMAGE ──────────────────────────────► 处理节点（AI 推理等）
+│                                               │
+│                                               ▼ IMAGE
+└── current_filename ──────────────► VHS_SaveVideoWithFilename
+                                        ← filename_stem
+                                        subfolder: "processed"
+                                        format: video/h264-mp4
+```
+
+- 输入 `clip_000.mp4` → 输出 `output/processed/clip_000.mp4`  
+- 输入 `clip_001.mp4` → 输出 `output/processed/clip_001.mp4`  
+- 全部完成后自动停止，无需人工干预
+
+---
+
+## 原版节点
+
+### Load Video (Upload / Path)
+
+将视频文件转换为帧序列。
+
+- `force_rate`：强制帧率，设为 `0` 禁用。可用于快速匹配 AnimateDiff 的 8fps。
+- `force_size`：快速缩放到建议尺寸，部分选项可只设宽度或高度并由长宽比推算另一值。
+- `frame_load_cap`：返回帧数上限，即最大 batch size。
+- `skip_first_frames`：从视频开头（已按强制帧率调整后）跳过的帧数。配合 `frame_load_cap` 可分段处理长视频。
+- `select_every_nth`：每 N 帧取 1 帧，不考虑基准帧率，不会造成帧复制，适合处理 animated gif。
+
+Path 版本支持从外部路径加载视频。
+
+### Load Image Sequence (Upload / Path)
+
+从子目录加载所有图片文件，选项与 Load Video 类似。
+
+- `image_load_cap`：返回图片数量上限。
+- `skip_first_images`：跳过开头的图片数量。
+- `select_every_nth`：每 N 张取 1 张。
+
 ### Video Combine
-Combines a series of images into an output video  
-If the optional audio input is provided, it will also be combined into the output video
-- frame_rate: How many of the input frames are displayed per second.  A higher frame rate means that the output video plays faster and has less duration. This should usually be kept to 8 for AnimateDiff, or matched to the force_rate of a Load Video node.
-- loop_count: How many additional times the video should repeat
-- filename_prefix: The base file name used for output.
-  - You can save output to a subfolder: `subfolder/video`
-  - Like the builtin Save Image node, you can add timestamps. `%date:yyyy-MM-ddThh:mm:ss%` might become 2023-10-31T6:45:25
-- format: The file format to use. Advanced information on configuring or adding additional video formats can be found in the [Video Formats](#video-formats) section.
-- pingpong: Causes the input to be played back in the reverse to create a clean loop.
-- save_output: Whether the image should be put into the output directory or the temp directory.
-Returns: a `VHS_FILENAMES` which consists of a boolean indicating if save_output is enabled and a list of the full filepaths of all generated outputs in the order created. Accordingly `output[1][-1]` will be the most complete output.
- 
-Depending on the format chosen, additional options may become available, including
-- crf: Describes the quality of the output video. A lower number gives a higher quality video and a larger file size, while a higher number gives a lower quality video with a smaller size. Scaling varies by codec, but visually lossless output generally occurs around 20.
-- save_metadata: Includes a copy of the workflow in the output video which can be loaded by dragging and dropping the video, just like with images.
-- pix_fmt: Changes how the pixel data is stored. `yuv420p10le` has higher color quality, but won't work on all devices
+
+将一系列图像合成输出视频，可选混入音频。
+
+- `frame_rate`：每秒显示的输入帧数。
+- `loop_count`：额外重复次数。
+- `filename_prefix`：输出文件名前缀，支持子目录和时间戳格式。
+- `format`：文件格式，详见 [Video Formats](#video-formats)。
+- `pingpong`：反向播放一次以创建无缝循环。
+- `save_output`：输出到 output 目录还是 temp 目录。
+
+返回 `VHS_FILENAMES`，包含 save_output 状态和所有生成文件的完整路径列表。
+
 ### Load Audio
-Provides a way to load standalone audio files.
-- seek_seconds: An optional start time for the audio file in seconds.
 
-## Latent/Image Nodes
-A number of utility nodes exist for managing latents. For each, there is an equivalent node which works on images.
-### Split Batch
-Divides the latents into two sets. The first `split_index` latents go to output A and the remainder to output B. If less then `split_index` latents are provided as input, all are passed to output A and output B is empty.
-### Merge Batch
-Combines two groups of latents into a single output. The order of the output is the latents in A followed by the latents in B.  
-If the input groups are not the same size, the node provides options for rescaling the latents before merging.
-### Select Every Nth
-The first of every `select_every_nth` input is passed and the remainder are discarded
-### Get Count
-### Duplicate Batch
+加载独立音频文件。
 
-## Video Previews
-Load Video (Upload), Load Video (Path), Load Images (Upload), Load Images (Path) and Video Combine provide animated previews.  
-Nodes with previews provide additional functionality when right clicked
-- Open preview
-- Save preview
-- Pause preview: Can improve performance with very large videos
-- Hide preview: Can improve performance, save space
-- Sync preview: Restarts all previews for side-by-side comparisons
+- `seek_seconds`：音频起始时间（秒）。
 
-### Advanced Previews
-Advanced Previews must be manually enabled by clicking the settings gear next to Queue Prompt and checking the box for VHS Advanced Previews.  
-If enabled, videos which are displayed in the ui will be converted with ffmpeg on request. This has several benefits
-- Previews for Load Video nodes will reflect the settings on the node such as skip_first_frames and frame_load_cap
-  - This makes it easy to select an exact portion of an input video and sync it with outputs
-- It can use substantially less bandwidth if running the server remotely
-- It can greatly improve the browser performance by downsizing videos to the in ui resolution, particularly useful with animated gifs
-- It allows for previews of videos that would not normally be playable in browser.
-- Can be limited to subdirectories of ComyUI if `VHS_STRICT_PATHS` is set as an environment variable.
+---
 
-This fucntionality is disabled since it comes with several downsides
-- There is a delay before videos show in the browser. This delay can become quite large if the input video is long
-- The preview videos are lower quality (The original can always be viewed with Right Click -> Open preview)
+## Latent / Image 工具节点
+
+以下节点均有 Latent、Image、Mask 三个等价版本：
+
+| 节点 | 功能 |
+|------|------|
+| Split Batch | 按 `split_index` 将输入分为 A（前段）和 B（后段）|
+| Merge Batch | 将 A 和 B 合并为一个序列，支持不同尺寸时的缩放策略 |
+| Select Every Nth | 每 N 个取第 1 个，其余丢弃 |
+| Get Count | 获取当前批次数量 |
+| Duplicate Batch | 重复复制批次 |
+| Select (by index list) | 按索引列表选取 |
+
+---
+
+## 视频预览
+
+以下节点支持动画预览：Load Video (Upload/Path)、Load Images (Upload/Path)、Video Combine、Load Videos From Directory (Path)。
+
+右键预览区域可：
+- 在浏览器中打开原文件
+- 保存预览
+- 暂停 / 隐藏 / 同步预览
+
+### 高级预览
+
+在设置中手动开启 **VHS Advanced Previews**，启用后 Load Video 节点的预览将实时反映 `skip_first_frames`、`frame_load_cap` 等参数设置，方便精确截取视频片段。
+
+---
 
 ## Video Formats
-Those familiar with ffmpeg are able to add json files to the video_formats folders to add new output types to Video Combine. 
-Consider the following example for av1-webm
+
+熟悉 ffmpeg 的用户可在 `video_formats` 目录下添加 JSON 文件，为 Video Combine 增加新的输出格式。
+
 ```json
 {
-    "main_pass":
-    [
-        "-n", "-c:v", "libsvtav1",
+    "main_pass": [
+        "-c:v", "libsvtav1",
         "-pix_fmt", "yuv420p10le",
-        "-crf", ["crf","INT", {"default": 23, "min": 0, "max": 100, "step": 1}]
+        "-crf", ["crf", "INT", {"default": 23, "min": 0, "max": 100, "step": 1}]
     ],
     "audio_pass": ["-c:a", "libopus"],
-     "extension": "webm",
-     "environment": {"SVT_LOG": "1"}
+    "extension": "webm",
+    "environment": {"SVT_LOG": "1"}
 }
 ```
-Most configuration takes place in `main_pass`, which is a list of arguments that are passed to ffmpeg. 
-- `"-n"` designates that the command should fail if a file of the same name already exists. This should never happen, but if some bug were to occur, it would ensure other files aren't overwritten.
-- `"-c:v", "libsvtav1"` designates that the video should be encoded with an av1 codec using the new SVT-AV1 encoder. SVT-AV1 is much faster than libaom-av1, but may not exist in older versions of ffmpeg. Alternatively, av1_nvenc could be used for gpu encoding with newer nvidia cards. 
-- `"-pix_fmt", "yuv420p10le"` designates the standard pixel format with 10-bit color. It's important that some pixel format be specified to ensure a nonconfigurable input pix_fmt isn't used.
 
-`audio pass` contains a list of arguments which are passed to ffmpeg when audio is passed into Video Combine
+- `main_pass`：传给 ffmpeg 的参数列表，列表项可以是字符串或暴露为 widget 的三元组 `[name, type, options]`。
+- `audio_pass`：有音频输入时传给 ffmpeg 的参数。
+- `extension`：文件扩展名（同时决定容器格式）。
+- `environment`：可选，执行时附加的环境变量。
+- `input_color_depth`：像素传输位深，`8bit`（默认）或 `16bit`（实验性，质量更高）。
+- `save_metadata`：设为 `True` 时将 workflow 嵌入输出视频元数据，支持拖拽加载。
 
-`extension` designates both the file extension and the container format that is used. If some of the above options are omitted from `main_pass` it can affect what default options are chosen.  
-`environment` can optionally be provided to set environment variables during execution. For av1 it's used to reduce the verbosity of logging so that only major errors are displayed.  
-`input_color_depth` effects the format in which pixels are passed to the ffmpeg subprocess. Current valid options are `8bit` and `16bit`. The later will produce higher quality output, but is experimental.
+---
 
-Fields can be exposed in the webui as a widget using a format similar to what is used in the creation of custom nodes. In the above example, the argument for `-crf` will be exposed as a format widget in the webui. Format widgets are a list of up to 3 terms
-- The name of the widget that will be displayed in the web ui
-- Either a primitive such as "INT" or "BOOLEAN", or a list of string options
-- A dictionary of options
+## 致谢
+
+本项目基于 [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) 开发，感谢原作者的出色工作。
