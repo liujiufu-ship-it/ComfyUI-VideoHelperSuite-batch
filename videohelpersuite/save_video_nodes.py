@@ -351,6 +351,8 @@ class SaveVideoWithFilename:
             else:
                 args += video_format['main_pass'] + bitrate_arg
                 merge_filter_args(args)
+                # 格式 JSON 里可能含 -n（禁止覆盖），强制改为 -y（允许覆盖）
+                args = ["-y" if a == "-n" else a for a in args]
                 output_process = ffmpeg_process(
                     args, video_format, video_metadata, file_path, env
                 )

@@ -166,7 +166,7 @@ def ffmpeg_process(args, video_format, video_metadata, file_path, env):
         m_args = args[:1] + ["-i", metadata_path] + args[1:] + [
             "-metadata", "creation_time=now", "-movflags", "use_metadata_tags"
         ]
-        with subprocess.Popen(m_args + ["-y", file_path], stderr=subprocess.PIPE,
+        with subprocess.Popen(m_args + [file_path], stderr=subprocess.PIPE,
                               stdin=subprocess.PIPE, env=env) as proc:
             try:
                 while frame_data is not None:
@@ -185,7 +185,7 @@ def ffmpeg_process(args, video_format, video_metadata, file_path, env):
                 logger.warn("An error occurred when saving with metadata")
 
     if res != b'':
-        with subprocess.Popen(args + ["-y", file_path], stderr=subprocess.PIPE,
+        with subprocess.Popen(args + [file_path], stderr=subprocess.PIPE,
                               stdin=subprocess.PIPE, env=env) as proc:
             try:
                 while frame_data is not None:
