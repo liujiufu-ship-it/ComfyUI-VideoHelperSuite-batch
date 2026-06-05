@@ -266,6 +266,57 @@ descriptions = {
          'videopreview': 'Displays a preview for the selected video input. Will only be shown if Advanced Previews is enabled. This preview will reflect the image_load_cap, skip_first_images, and select_every_nth values chosen. Additional preview options can be accessed with right click.',
          }
         }],
+  "VHS_LoadVideosFromDirectoryPath": ['Load Videos From Directory (Path) 🎥🅥🅗🅢',
+    short_desc('Iterates over all video files in a directory, processing one per workflow execution'),
+    'Scans a directory for video files and processes them one at a time. After each execution the workflow is automatically requeued for the next video, keeping peak VRAM usage constant regardless of how many videos are in the directory.',
+    {'Inputs': {
+        'meta_batch': '(optional) A Meta Batch Manager node to split processing of each individual video into smaller batches.',
+        'vae': '(optional) If provided, the node will output latents instead of images.',
+        },
+     'Outputs': {
+         'IMAGE': 'The frames of the current video.',
+         'frame_count': 'The number of frames loaded from the current video.',
+         'audio': 'The audio track of the current video.',
+         'video_info': 'Technical metadata for the current video (fps, resolution, duration, etc.).',
+         'current_index': 'Zero-based index of the video currently being processed.',
+         'total_count': 'Total number of video files found in the directory.',
+         'current_filename': 'Filename of the current video (including extension). Connect this to the filename_stem input of Save Video (Keep Filename) to preserve the original name.',
+         },
+     'Widgets': {
+         'directory': ['Path to the directory containing the videos to process.'] + common_descriptions['VHS_PATH'],
+         'skip_first_videos': 'Number of videos to skip from the beginning of the sorted file list.',
+         'video_load_cap': 'Maximum number of videos to process. 0 processes all videos.',
+         'select_every_nth_video': 'Keep only every Nth video from the directory listing.',
+         'force_rate': 'Target frame rate. Frames are duplicated or dropped as needed. 0 disables.',
+         'custom_width': 'Target width in pixels. 0 uses the source width.',
+         'custom_height': 'Target height in pixels. 0 uses the source height.',
+         'frame_load_cap': 'Maximum number of frames to load per video. 0 loads all frames.',
+         'skip_first_frames': 'Number of frames to skip from the start of each video.',
+         'select_every_nth': 'Keep only the first of every N frames.',
+         }
+        }],
+  "VHS_SaveVideoWithFilename": ['Save Video (Keep Filename) 🎥🅥🅗🅢',
+    short_desc('Saves a video using a specified filename stem, preserving the original filename'),
+    'Saves a video to disk using an explicit filename stem rather than an auto-incremented prefix. Designed to be used with the current_filename output of Load Videos From Directory so that processed videos retain their original names. Supports all the same output formats as Video Combine.',
+    {'Inputs': {
+        'images': 'The frames to encode into a video.',
+        'audio': '(optional) Audio to mux into the output file.',
+        'vae': '(optional) If provided, images are treated as latents and decoded before saving.',
+        },
+     'Outputs': {
+         'Filenames': 'A VHS_FILENAMES value containing the save_output flag and list of all files written during this execution.',
+         },
+     'Widgets': {
+         'frame_rate': 'Frames per second for the output video.',
+         'loop_count': 'Number of additional times the video should loop. 0 plays once.',
+         'filename_stem': 'The output filename without extension. Connect the current_filename output of Load Videos From Directory here to preserve the original video name.',
+         'subfolder': 'Subdirectory under the ComfyUI output folder where the file will be saved. Leave empty to save directly in the output root.',
+         'format': 'Output container and codec. Supports all formats available to Video Combine.',
+         'pingpong': 'Append a reversed copy of the frames to create a seamless loop.',
+         'save_output': 'If true, saves to the output directory. If false, saves to the temp directory.',
+         'overwrite': 'If true, overwrites an existing file with the same name. If false, appends _001/_002/... to avoid collisions.',
+         }
+        }],
   "VHS_LoadAudio": ['Load Audio (Path) 🎥🅥🅗🅢', short_desc('Loads an audio file from an arbitrary path'),
     {'Outputs': {
          'audio': 'The loaded audio',
